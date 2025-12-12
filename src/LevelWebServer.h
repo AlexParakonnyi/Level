@@ -11,6 +11,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
+#include "ConfigManager.h"
 #include "FileManager.h"
 #include "SensorManager.h"
 
@@ -39,11 +40,22 @@ class LevelWebServer {
    */
   uint8_t getClientCount() const { return ws.count(); }
 
+  /**
+   * @brief Включить/выключить подробное логирование WebSocket
+   */
+  void setDebugMode(bool enabled) { wsDebugEnabled = enabled; }
+
  private:
   AsyncWebServer server;
   AsyncWebSocket ws;
 
   SensorManager& sensorManager;
+
+  // WebSocket отладка и статистика (должны быть до fileManager)
+  bool wsDebugEnabled;
+  unsigned long lastBroadcastTime;
+  unsigned long broadcastCount;
+
   FileManager fileManager;
 
   // Настройка маршрутов
@@ -54,6 +66,9 @@ class LevelWebServer {
   // Обработчики WebSocket событий
   void handleWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data,
                               size_t len);
+
+  // CORS helper
+  void addCORSHeaders(AsyncWebServerResponse* response);
 
   // Вспомогательные функции
   String getSensorDataJson();

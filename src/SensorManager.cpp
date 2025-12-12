@@ -105,26 +105,11 @@ bool SensorManager::initSensors() {
   return true;
 }
 
+// SensorManager.cpp
 void SensorManager::loadSettings() {
-  // Загружаем offset (с использованием ConfigManager)
-  zeroOffset = ConfigManager::readFloat(ConfigManager::ZERO_OFFSET_PATH,
-                                        ConfigManager::DEFAULT_ZERO_OFFSET);
-  // Serial.printf("Loaded zero offset: %.2f°\n", zeroOffset);
-
-  // Загружаем axis swap
-  axisSwap = ConfigManager::readBool(ConfigManager::AXIS_SWAP_PATH,
-                                     ConfigManager::DEFAULT_AXIS_SWAP);
-  // Serial.printf("Loaded axis swap: %s\n", axisSwap ? "true" : "false");
-}
-
-float SensorManager::readFloatFromFile(const char* path, float defaultValue) {
-  // Используем ConfigManager для чтения
-  return ConfigManager::readFloat(path, defaultValue);
-}
-
-bool SensorManager::readBoolFromFile(const char* path, bool defaultValue) {
-  // Используем ConfigManager для чтения
-  return ConfigManager::readBool(path, defaultValue);
+  // Загружаем из кеша ConfigManager (без чтения файлов!)
+  zeroOffset = ConfigManager::getZeroOffset();
+  axisSwap = ConfigManager::getAxisSwap();
 }
 
 void SensorManager::update() {

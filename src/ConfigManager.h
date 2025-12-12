@@ -1,5 +1,5 @@
 // ConfigManager.h
-// Управление конфигурационными файлами с дефолтными значениями
+// Управление конфигурационными файлами с кешированием в памяти
 
 #ifndef CONFIG_MANAGER_H
 #define CONFIG_MANAGER_H
@@ -22,52 +22,17 @@ class ConfigManager {
   static constexpr const char* AXIS_SWAP_PATH = "/axis_swap.txt";
 
   /**
-   * @brief Инициализация конфигурационных файлов
-   * Создаёт файлы с дефолтными значениями, если они не существуют
+   * @brief Инициализация конфигурации
+   * Создаёт файлы с дефолтными значениями и загружает в кеш
    */
-  static void initializeConfig() {
+  static void initialize() {
     Serial.println("=== Initializing Configuration ===");
 
-    // Level Min
-    if (!LittleFS.exists(LEVEL_MIN_PATH)) {
-      Serial.printf("Creating %s with default value: %.1f\n", LEVEL_MIN_PATH,
-                    DEFAULT_LEVEL_MIN);
-      writeFloat(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
-    } else {
-      float value = readFloat(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
-      Serial.printf("%s exists: %.1f\n", LEVEL_MIN_PATH, value);
-    }
+    // Создаём файлы если не существуют
+    initializeFiles();
 
-    // Level Max
-    if (!LittleFS.exists(LEVEL_MAX_PATH)) {
-      Serial.printf("Creating %s with default value: %.1f\n", LEVEL_MAX_PATH,
-                    DEFAULT_LEVEL_MAX);
-      writeFloat(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
-    } else {
-      float value = readFloat(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
-      Serial.printf("%s exists: %.1f\n", LEVEL_MAX_PATH, value);
-    }
-
-    // Zero Offset
-    if (!LittleFS.exists(ZERO_OFFSET_PATH)) {
-      Serial.printf("Creating %s with default value: %.1f\n", ZERO_OFFSET_PATH,
-                    DEFAULT_ZERO_OFFSET);
-      writeFloat(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
-    } else {
-      float value = readFloat(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
-      Serial.printf("%s exists: %.1f\n", ZERO_OFFSET_PATH, value);
-    }
-
-    // Axis Swap
-    if (!LittleFS.exists(AXIS_SWAP_PATH)) {
-      Serial.printf("Creating %s with default value: %s\n", AXIS_SWAP_PATH,
-                    DEFAULT_AXIS_SWAP ? "true" : "false");
-      writeBool(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
-    } else {
-      bool value = readBool(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
-      Serial.printf("%s exists: %s\n", AXIS_SWAP_PATH,
-                    value ? "true" : "false");
-    }
+    // Загружаем в кеш
+    loadFromFiles();
 
     Serial.println("=== Configuration initialized ===\n");
   }
@@ -78,10 +43,17 @@ class ConfigManager {
   static void resetToDefaults() {
     Serial.println("=== Resetting configuration to defaults ===");
 
-    writeFloat(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
-    writeFloat(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
-    writeFloat(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
-    writeBool(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+    // Записываем дефолты в файлы
+    writeFloatToFile(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
+    writeFloatToFile(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
+    writeFloatToFile(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
+    writeBoolToFile(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+
+    // Обновляем кеш
+    cachedLevelMin = DEFAULT_LEVEL_MIN;
+    cachedLevelMax = DEFAULT_LEVEL_MAX;
+    cachedZeroOffset = DEFAULT_ZERO_OFFSET;
+    cachedAxisSwap = DEFAULT_AXIS_SWAP;
 
     Serial.println("Configuration reset complete");
   }
@@ -90,24 +62,133 @@ class ConfigManager {
    * @brief Вывести текущие настройки в Serial
    */
   static void printConfig() {
-    Serial.println("=== Current Configuration ===");
-    Serial.printf("Level Min: %.1f°\n",
-                  readFloat(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN));
-    Serial.printf("Level Max: %.1f°\n",
-                  readFloat(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX));
-    Serial.printf("Zero Offset: %.2f°\n",
-                  readFloat(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET));
-    Serial.printf("Axis Swap: %s\n",
-                  readBool(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP) ? "ON" : "OFF");
-    Serial.println("===========================\n");
+    Serial.println("=== Current Configuration (Cached) ===");
+    Serial.printf("Level Min: %.1f°\n", cachedLevelMin);
+    Serial.printf("Level Max: %.1f°\n", cachedLevelMax);
+    Serial.printf("Zero Offset: %.2f°\n", cachedZeroOffset);
+    Serial.printf("Axis Swap: %s\n", cachedAxisSwap ? "ON" : "OFF");
+    Serial.println("======================================\n");
   }
 
-  // === Вспомогательные функции для чтения/записи ===
+  // ========== ГЕТТЕРЫ (из кеша) ==========
+
+  static float getLevelMin() { return cachedLevelMin; }
+  static float getLevelMax() { return cachedLevelMax; }
+  static float getZeroOffset() { return cachedZeroOffset; }
+  static bool getAxisSwap() { return cachedAxisSwap; }
+
+  // ========== СЕТТЕРЫ (обновляют кеш И файл) ==========
+
+  static bool setLevelMin(float value) {
+    if (!validateRange(value, cachedLevelMax)) {
+      return false;
+    }
+    cachedLevelMin = value;
+    return writeFloatToFile(LEVEL_MIN_PATH, value);
+  }
+
+  static bool setLevelMax(float value) {
+    if (!validateRange(cachedLevelMin, value)) {
+      return false;
+    }
+    cachedLevelMax = value;
+    return writeFloatToFile(LEVEL_MAX_PATH, value);
+  }
+
+  static bool setLevelRange(float min, float max) {
+    if (!validateRange(min, max)) {
+      return false;
+    }
+    cachedLevelMin = min;
+    cachedLevelMax = max;
+    writeFloatToFile(LEVEL_MIN_PATH, min);
+    writeFloatToFile(LEVEL_MAX_PATH, max);
+    return true;
+  }
+
+  static bool setZeroOffset(float value) {
+    if (abs(value) > 45.0f) {
+      Serial.println("ERROR: Offset must be between -45 and 45");
+      return false;
+    }
+    cachedZeroOffset = value;
+    return writeFloatToFile(ZERO_OFFSET_PATH, value);
+  }
+
+  static bool setAxisSwap(bool value) {
+    cachedAxisSwap = value;
+    return writeBoolToFile(AXIS_SWAP_PATH, value);
+  }
+
+  // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
   /**
-   * @brief Прочитать float из файла
+   * @brief Проверить валидность диапазона
    */
-  static float readFloat(const char* path, float defaultValue) {
+  static bool validateRange(float min, float max) {
+    if (min >= max) {
+      Serial.println("ERROR: Invalid range (min >= max)");
+      return false;
+    }
+    if (min < -90.0f || max > 90.0f) {
+      Serial.println("ERROR: Range outside limits (-90 to +90)");
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @brief Загрузить настройки из файлов в кеш (вызывать только при старте)
+   */
+  static void loadFromFiles() {
+    cachedLevelMin = readFloatFromFile(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
+    cachedLevelMax = readFloatFromFile(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
+    cachedZeroOffset = readFloatFromFile(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
+    cachedAxisSwap = readBoolFromFile(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+
+    Serial.println("Configuration loaded from files:");
+    Serial.printf("  Level Min: %.1f°\n", cachedLevelMin);
+    Serial.printf("  Level Max: %.1f°\n", cachedLevelMax);
+    Serial.printf("  Zero Offset: %.2f°\n", cachedZeroOffset);
+    Serial.printf("  Axis Swap: %s\n", cachedAxisSwap ? "ON" : "OFF");
+  }
+
+ private:
+  // ========== КЕШИРОВАННЫЕ ЗНАЧЕНИЯ ==========
+  static float cachedLevelMin;
+  static float cachedLevelMax;
+  static float cachedZeroOffset;
+  static bool cachedAxisSwap;
+
+  // ========== ПРИВАТНЫЕ МЕТОДЫ ==========
+
+  static void initializeFiles() {
+    if (!LittleFS.exists(LEVEL_MIN_PATH)) {
+      Serial.printf("Creating %s with default: %.1f\n", LEVEL_MIN_PATH,
+                    DEFAULT_LEVEL_MIN);
+      writeFloatToFile(LEVEL_MIN_PATH, DEFAULT_LEVEL_MIN);
+    }
+
+    if (!LittleFS.exists(LEVEL_MAX_PATH)) {
+      Serial.printf("Creating %s with default: %.1f\n", LEVEL_MAX_PATH,
+                    DEFAULT_LEVEL_MAX);
+      writeFloatToFile(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
+    }
+
+    if (!LittleFS.exists(ZERO_OFFSET_PATH)) {
+      Serial.printf("Creating %s with default: %.1f\n", ZERO_OFFSET_PATH,
+                    DEFAULT_ZERO_OFFSET);
+      writeFloatToFile(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
+    }
+
+    if (!LittleFS.exists(AXIS_SWAP_PATH)) {
+      Serial.printf("Creating %s with default: %s\n", AXIS_SWAP_PATH,
+                    DEFAULT_AXIS_SWAP ? "true" : "false");
+      writeBoolToFile(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+    }
+  }
+
+  static float readFloatFromFile(const char* path, float defaultValue) {
     if (!LittleFS.exists(path)) {
       return defaultValue;
     }
@@ -129,10 +210,7 @@ class ConfigManager {
     return content.toFloat();
   }
 
-  /**
-   * @brief Прочитать bool из файла
-   */
-  static bool readBool(const char* path, bool defaultValue) {
+  static bool readBoolFromFile(const char* path, bool defaultValue) {
     if (!LittleFS.exists(path)) {
       return defaultValue;
     }
@@ -158,10 +236,7 @@ class ConfigManager {
     return defaultValue;
   }
 
-  /**
-   * @brief Записать float в файл
-   */
-  static bool writeFloat(const char* path, float value) {
+  static bool writeFloatToFile(const char* path, float value) {
     File file = LittleFS.open(path, "w");
     if (!file) {
       Serial.printf("ERROR: Failed to open %s for writing\n", path);
@@ -173,10 +248,7 @@ class ConfigManager {
     return true;
   }
 
-  /**
-   * @brief Записать bool в файл
-   */
-  static bool writeBool(const char* path, bool value) {
+  static bool writeBoolToFile(const char* path, bool value) {
     File file = LittleFS.open(path, "w");
     if (!file) {
       Serial.printf("ERROR: Failed to open %s for writing\n", path);
@@ -185,21 +257,6 @@ class ConfigManager {
 
     file.print(value ? "true" : "false");
     file.close();
-    return true;
-  }
-
-  /**
-   * @brief Проверить валидность диапазона
-   */
-  static bool validateRange(float min, float max) {
-    if (min >= max) {
-      Serial.println("ERROR: Invalid range (min >= max)");
-      return false;
-    }
-    if (min < -90.0f || max > 90.0f) {
-      Serial.println("ERROR: Range outside limits (-90 to +90)");
-      return false;
-    }
     return true;
   }
 };

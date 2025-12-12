@@ -159,10 +159,6 @@ class SensorManager {
 
   float computeRoll(float ax, float ay, float az);
   float computePitch(float ax, float ay, float az);
-
-  // Чтение настроек из файлов (через ConfigManager)
-  float readFloatFromFile(const char* path, float defaultValue);
-  bool readBoolFromFile(const char* path, bool defaultValue);
 };
 
 #endif  // SENSOR_MANAGER_H
