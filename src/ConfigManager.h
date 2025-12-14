@@ -7,6 +7,8 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 
+#include "FileManager.h"
+
 class ConfigManager {
  public:
   // Дефолтные значения
@@ -20,6 +22,10 @@ class ConfigManager {
   static constexpr const char* LEVEL_MAX_PATH = "/level_max.txt";
   static constexpr const char* ZERO_OFFSET_PATH = "/zero_offset.txt";
   static constexpr const char* AXIS_SWAP_PATH = "/axis_swap.txt";
+  static constexpr const char* GATEWAY_PATH = "/gateway.txt";
+  static constexpr const char* IP_PATH = "/ip.txt";
+  static constexpr const char* SSID_PATH = "/ssid.txt";
+  static constexpr const char* PASS_PATH = "/pass.txt";
 
   /**
    * @brief Инициализация конфигурации
@@ -48,6 +54,12 @@ class ConfigManager {
     writeFloatToFile(LEVEL_MAX_PATH, DEFAULT_LEVEL_MAX);
     writeFloatToFile(ZERO_OFFSET_PATH, DEFAULT_ZERO_OFFSET);
     writeBoolToFile(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+
+    // Сбрасываем строковые настройки к пустым значениям
+    writeStringToFile(GATEWAY_PATH, "");
+    writeStringToFile(IP_PATH, "");
+    writeStringToFile(SSID_PATH, "");
+    writeStringToFile(PASS_PATH, "");
 
     // Обновляем кеш
     cachedLevelMin = DEFAULT_LEVEL_MIN;
@@ -163,6 +175,7 @@ class ConfigManager {
   // ========== ПРИВАТНЫЕ МЕТОДЫ ==========
 
   static void initializeFiles() {
+    // Числовые настройки
     if (!LittleFS.exists(LEVEL_MIN_PATH)) {
       Serial.printf("Creating %s with default: %.1f\n", LEVEL_MIN_PATH,
                     DEFAULT_LEVEL_MIN);
@@ -185,6 +198,27 @@ class ConfigManager {
       Serial.printf("Creating %s with default: %s\n", AXIS_SWAP_PATH,
                     DEFAULT_AXIS_SWAP ? "true" : "false");
       writeBoolToFile(AXIS_SWAP_PATH, DEFAULT_AXIS_SWAP);
+    }
+
+    // Строковые настройки - создаем пустые файлы если не существуют
+    if (!LittleFS.exists(GATEWAY_PATH)) {
+      Serial.printf("Creating empty file: %s\n", GATEWAY_PATH);
+      writeStringToFile(GATEWAY_PATH, "");
+    }
+
+    if (!LittleFS.exists(IP_PATH)) {
+      Serial.printf("Creating empty file: %s\n", IP_PATH);
+      writeStringToFile(IP_PATH, "");
+    }
+
+    if (!LittleFS.exists(SSID_PATH)) {
+      Serial.printf("Creating empty file: %s\n", SSID_PATH);
+      writeStringToFile(SSID_PATH, "");
+    }
+
+    if (!LittleFS.exists(PASS_PATH)) {
+      Serial.printf("Creating empty file: %s\n", PASS_PATH);
+      writeStringToFile(PASS_PATH, "");
     }
   }
 
@@ -256,6 +290,18 @@ class ConfigManager {
     }
 
     file.print(value ? "true" : "false");
+    file.close();
+    return true;
+  }
+
+  static bool writeStringToFile(const char* path, const String& value) {
+    File file = LittleFS.open(path, "w");
+    if (!file) {
+      Serial.printf("ERROR: Failed to open %s for writing\n", path);
+      return false;
+    }
+
+    file.print(value);
     file.close();
     return true;
   }

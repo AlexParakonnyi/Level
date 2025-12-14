@@ -25,7 +25,7 @@ const auto FILTER_PROFILE = MultiChannelKalman::RESPONSIVE;
 
 // Частоты обновления
 const unsigned long INDICATOR_UPDATE_MS = 30;   // 33 Hz для плавной индикации
-const unsigned long WEBSOCKET_UPDATE_MS = 250;  // 4 Hz (вместо 10 Hz!)
+const unsigned long WEBSOCKET_UPDATE_MS = 200;  // 10 Hz
 
 // Максимум WebSocket клиентов
 const uint8_t MAX_WS_CLIENTS = 3;
@@ -188,6 +188,9 @@ void loop() {
   stats.loopCount++;
   unsigned long now = millis();
 
+  // Обработка Web сервера
+  webServer.handleClients();
+
   // 1. Обновление датчиков (ВСЕГДА)
   sensorManager.update();
 
@@ -228,7 +231,4 @@ void loop() {
     printSystemInfo();
     lastInfoPrint = now;
   }
-
-  // Минимальная задержка для стабильности
-  delay(1);
 }

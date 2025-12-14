@@ -1,15 +1,12 @@
-// LevelWebServer.h
-// Отвечает за: HTTP сервер, WebSocket, CORS, маршруты, настройки
-
+// LevelWebServer.h - С БИБЛИОТЕКОЙ WebSockets (Links2004)
 #ifndef LEVEL_WEB_SERVER_H
 #define LEVEL_WEB_SERVER_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <AsyncTCP.h>
-#include <AsyncWebSocket.h>
-#include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
 
 #include "ConfigManager.h"
 #include "FileManager.h"
@@ -20,55 +17,56 @@ class LevelWebServer {
   LevelWebServer(SensorManager& sensorMgr);
 
   /**
-   * @brief Запуск сервера (работает и в AP, и в STA режиме)
+   * @brief Запуск серверов (HTTP + WebSocket)
    */
   void begin();
 
   /**
    * @brief Отправка данных всем WebSocket клиентам
-   * Автоматически применяет offset и axis swap
    */
   void broadcastSensorData();
 
   /**
-   * @brief Очистка мёртвых соединений (вызывать из loop())
+   * @brief Обработка WebSocket событий (вызывать из loop())
    */
   void handleClients();
 
   /**
    * @brief Получить количество подключённых WebSocket клиентов
    */
-  uint8_t getClientCount() const { return ws.count(); }
+  uint8_t getClientCount() const { return wsClientCount; }
 
   /**
-   * @brief Включить/выключить подробное логирование WebSocket
+   * @brief Включить/выключить подробное логирование
    */
   void setDebugMode(bool enabled) { wsDebugEnabled = enabled; }
 
  private:
-  AsyncWebServer server;
-  AsyncWebSocket ws;
+  WebServer httpServer;
+  WebSocketsServer wsServer;
 
   SensorManager& sensorManager;
+  FileManager fileManager;
 
-  // WebSocket отладка и статистика (должны быть до fileManager)
+  // WebSocket статистика
   bool wsDebugEnabled;
   unsigned long lastBroadcastTime;
   unsigned long broadcastCount;
+  uint8_t wsClientCount;
 
-  FileManager fileManager;
+  // Минимальный интервал между broadcast (мс)
+  static const uint32_t BROADCAST_INTERVAL_MS = 200;  // 5 Hz
 
-  // Настройка маршрутов
+  // WebSocket обработчик событий
+  static void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload,
+                             size_t length);
+  static LevelWebServer* instance;  // Для доступа из статического callback
+
+  // HTTP маршруты
   void setupRoutes();
-  void setupWebSocket();
-  void setupCORS();
-
-  // Обработчики WebSocket событий
-  void handleWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data,
-                              size_t len);
 
   // CORS helper
-  void addCORSHeaders(AsyncWebServerResponse* response);
+  void sendCORSHeaders();
 
   // Вспомогательные функции
   String getSensorDataJson();
